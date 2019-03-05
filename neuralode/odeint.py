@@ -10,7 +10,6 @@ tf.register_tensor_conversion_function(
 
 def odeint_grad(grad_output, func, yt, t, args):
   ysize = yt.shape[1].value
-
   def backward_dynamics(state, t, args):
     funcstate = state[:ysize]
     adjoint = state[ysize:2 * ysize]
@@ -18,7 +17,7 @@ def odeint_grad(grad_output, func, yt, t, args):
     grad = tfe.gradients_function(
         lambda *args: tf.tensordot(func(*args), -adjoint, 1))
     state_grad, t0_grad, adjoint_grad = grad(funcstate, t, args)
-    return tf.concat([fval, state_grad, t0_grad, adjoint_grad], 0)
+    return tf.concat([fval, state_grad, t0_grad[None], adjoint_grad], 0)
 
   y_grad = grad_output[-1]
   t0_grad = 0
@@ -29,16 +28,19 @@ def odeint_grad(grad_output, func, yt, t, args):
         tf.tensordot(func(yt[i], t[i], args), grad_output[i], 1))
     t0_grad = t0_grad - time_grads[-1]
 
+    rev_t = tf.convert_to_tensor([t[i], t[i - 1]])
     backward_state = tf.concat([yt[i], y_grad, t0_grad[None], args_grad], 0)
-    backward_answer = -tf.contrib.integrate.odeint(
-        lambda y0, t: backward_dynamics(y0, t, args),
-        backward_state,
-        tf.convert_to_tensor([t[i - 1], t[i]]),
-        args)
-    _, y_grad, t_grad, args_grad = tf.split(backward_answer,
-                                            [ysize, 2 * ysize, 2 * ysize + 1])
-    y_grad = y_grad + grad_output[i - 1, :]
+    _t = -rev_t
+    _base_reverse_f = backward_dynamics
+    fc = lambda y, t, args: [-f_ for f_ in _base_reverse_f(y,-t, args)]
 
+    backward_answer = tf.contrib.integrate.odeint(
+        lambda y0, t: fc(y0, t, args),
+        y0=backward_state,
+        t=_t)[-1]
+    _, y_grad, t_grad, args_grad = tf.split(backward_answer,
+                                            [ysize, ysize, 1, ysize])
+    y_grad = y_grad + grad_output[i - 1, :]
   time_grads.append(t0_grad)
   time_grads.reverse()
   time_grads = tf.convert_to_tensor(time_grads)
