@@ -1,5 +1,9 @@
 from types import FunctionType
 import tensorflow as tf
+
+from neuralode.utils import *
+from neuralode.utils import _flatten_convert_none_to_zeros, _flatten
+
 tfe = tf.contrib.eager
 
 
@@ -14,13 +18,35 @@ def _flat(tensor):
 
 def odeint_grad(grad_output, func, yt, t, args):
   yshape = yt.shape[1:]
+  print(yt.shape)
   ysize = tf.reduce_prod(yshape)
+  print(ysize, args[0].shape)
+  args = _flatten(args)
 
-  def backward_dynamics(state, t, args):
-    funcstate = tf.reshape(state[:ysize], yshape)
-    adjoint = state[ysize:2 * ysize]
-    # TODO: compute vjps with adjoint.
-    return tf.concat([fval, state_grad, t0_grad[None], adjoint_grad], 0)
+  def backward_dynamics(state, t, f_params):
+    y = tf.reshape(state[:ysize], yshape)
+    adjoint_grad_y = state[ysize:2 * ysize]
+
+    with tf.GradientTape() as tape:
+        tape.watch(t)
+        tape.watch(y)
+        fval = func(y, t)
+    vjp_t, vjp_y, vjp_params = tape.gradient(fval, [(t,), y, f_params])
+
+    vjp_t = (tf.zeros_like(t, dtype=t.dtype),) if vjp_t[0] is None else vjp_t
+
+    vjp_params = tf.zeros_like(f_params, dtype=f_params.dtype) if vjp_params is None else vjp_params
+
+    vjp_y = tuple(tf.zeros_like(y_, dtype=y_.dtype)
+                  if vjp_y_ is None else vjp_y_
+                  for vjp_y_, y_ in zip(vjp_y, y))
+    vjp_params = _flatten_convert_none_to_zeros(vjp_params, f_params)
+
+    if len(f_params) == 0:
+        vjp_params = tf.convert_to_tensor(0., dtype=vjp_y[0].dype)
+    #
+    # print(fval)
+    return tf.concat([_flatten(fval), *vjp_y, vjp_t, vjp_params], 0)
 
   y_grad = grad_output[-1]
   t0_grad = 0
@@ -45,7 +71,8 @@ def odeint_grad(grad_output, func, yt, t, args):
         t=_t)[-1]
     _, y_grad, t_grad, args_grad = tf.split(backward_answer,
                                             [ysize, ysize, 1, -1])
-    y_grad = y_grad + grad_output[i - 1, :]
+    y_grad = y_grad + _flatten(grad_output[i - 1, :])
+
   time_grads.append(t0_grad)
   time_grads.reverse()
   time_grads = tf.convert_to_tensor(time_grads)
@@ -57,10 +84,10 @@ def odeint_grad(grad_output, func, yt, t, args):
 @tf.custom_gradient
 def odeint(func, y0, t):
   yt = tf.contrib.integrate.odeint(func, y0, t)
-
   def grad_fn(grad_output, variables=None):
     _, y_grad, time_grads, var_grad = odeint_grad(
         grad_output, func, yt, t, variables)
-    return None, y_grad, time_grads, var_grad
+    print(len(var_grad))
+    return [None, y_grad, time_grads], var_grad
 
   return yt, grad_fn
