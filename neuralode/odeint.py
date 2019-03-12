@@ -78,6 +78,8 @@ def odeint_grad(grad_output, func, yt, t, _args):
   args_grad = tf.split(args_grad, [tf.reduce_prod(arg.shape) for arg in _args])
   args_grad = [tf.reshape(g, arg.shape) for g, arg in zip(args_grad, _args)]
 
+  print(y_grad, time_grads, args_grad)
+
   return None, y_grad, time_grads, args_grad
 
 
@@ -85,9 +87,8 @@ def odeint_grad(grad_output, func, yt, t, _args):
 def odeint(func, y0, t):
   yt = tf.contrib.integrate.odeint(func, y0, t)
   def grad_fn(grad_output, variables=None):
-    _, y_grad, time_grads, var_grad = odeint_grad(
-        grad_output, func, yt, t, variables)
-    grads_res = var_grad
-    return (y_grad, grads_res)
+    *grad_inputs, grad_variables = odeint_grad(grad_output, func, yt, t, variables)
+    return grad_inputs, grad_variables
 
+  print(yt, grad_fn) 
   return yt, grad_fn

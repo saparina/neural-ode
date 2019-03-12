@@ -62,6 +62,6 @@ for i in range(1, niters + 1):
   grad_vars = zip(grads, model.variables)
   optimizer.apply_gradients(grad_vars)
   if i % log_freq == 0:
-    pred_y = odeint(model_func, true_y0, t, model.variables)
-    loss = tf.reduce_mean(tf.abs(pred_y - true_y))
+    pred_y = odeint(model_func, batch_y0, batch_t)
+    loss = tf.reduce_mean(tf.abs(pred_y - batch_y))
     print('Iter {} | Loss {}'.format(i, loss.numpy()))
