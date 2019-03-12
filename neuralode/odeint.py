@@ -23,7 +23,7 @@ def odeint_grad(grad_output, func, yt, t, _args):
   # print(ysize, args[0].shape)
   args = _flatten(_args)
 
-  def backward_dynamics(state, t, f_params):
+  def backward_dynamics(state, t):
     y = tf.reshape(state[:ysize], yshape)
     adjoint_grad_y = state[ysize:2 * ysize]
 
@@ -44,8 +44,6 @@ def odeint_grad(grad_output, func, yt, t, _args):
 
     if len(f_params) == 0:
         vjp_params = tf.convert_to_tensor(0., dtype=vjp_y.dype)
-    #
-    # print(fval)
     return tf.concat([_flatten(fval), *vjp_y, vjp_t, vjp_params], 0)
 
   y_grad = grad_output[-1]
@@ -63,10 +61,11 @@ def odeint_grad(grad_output, func, yt, t, _args):
     backward_state = tf.concat([_flat(yt[i]), _flat(y_grad), t0_grad[None],
                                 args_grad], 0)
     _t = -rev_t
-    fc = lambda y, t, args: [-val for val in backward_dynamics(y, -t, args)]
+    f_params = tuple(_args)
+    fc = lambda y, t: [-val for val in backward_dynamics(y, -t)]
 
     backward_answer = tf.contrib.integrate.odeint(
-        lambda y0, t: fc(y0, t, args),
+        lambda y0, t: fc(y0, t),
         y0=backward_state,
         t=_t)[-1]
     _, y_grad, t_grad, args_grad = tf.split(backward_answer,
@@ -88,7 +87,7 @@ def odeint(func, y0, t):
   def grad_fn(grad_output, variables=None):
     _, y_grad, time_grads, var_grad = odeint_grad(
         grad_output, func, yt, t, variables)
-    grads_res =  var_grad
+    grads_res = var_grad
     return (y_grad, grads_res)
 
   return yt, grad_fn
