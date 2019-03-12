@@ -16,12 +16,12 @@ def _flat(tensor):
   return tf.reshape(tensor, (-1,))
 
 
-def odeint_grad(grad_output, func, yt, t, args):
+def odeint_grad(grad_output, func, yt, t, _args):
   yshape = yt.shape[1:]
   print(yt.shape)
   ysize = tf.reduce_prod(yshape)
-  print(ysize, args[0].shape)
-  args = _flatten(args)
+  # print(ysize, args[0].shape)
+  args = _flatten(_args)
 
   def backward_dynamics(state, t, f_params):
     y = tf.reshape(state[:ysize], yshape)
@@ -31,9 +31,9 @@ def odeint_grad(grad_output, func, yt, t, args):
         tape.watch(t)
         tape.watch(y)
         fval = func(y, t)
-    vjp_t, vjp_y, vjp_params = tape.gradient(fval, [(t,), y, f_params])
+    vjp_t, vjp_y, vjp_params = tape.gradient(fval, [t, y, f_params])
 
-    vjp_t = (tf.zeros_like(t, dtype=t.dtype),) if vjp_t[0] is None else vjp_t
+    vjp_t = (tf.zeros_like(t, dtype=t.dtype),) if vjp_t is None else vjp_t
 
     vjp_params = tf.zeros_like(f_params, dtype=f_params.dtype) if vjp_params is None else vjp_params
 
@@ -43,7 +43,7 @@ def odeint_grad(grad_output, func, yt, t, args):
     vjp_params = _flatten_convert_none_to_zeros(vjp_params, f_params)
 
     if len(f_params) == 0:
-        vjp_params = tf.convert_to_tensor(0., dtype=vjp_y[0].dype)
+        vjp_params = tf.convert_to_tensor(0., dtype=vjp_y.dype)
     #
     # print(fval)
     return tf.concat([_flatten(fval), *vjp_y, vjp_t, vjp_params], 0)
@@ -71,13 +71,14 @@ def odeint_grad(grad_output, func, yt, t, args):
         t=_t)[-1]
     _, y_grad, t_grad, args_grad = tf.split(backward_answer,
                                             [ysize, ysize, 1, -1])
-    y_grad = y_grad + _flatten(grad_output[i - 1, :])
+    y_grad = y_grad + _flat(grad_output[i - 1, :])
 
   time_grads.append(t0_grad)
   time_grads.reverse()
   time_grads = tf.convert_to_tensor(time_grads)
-  args_grad = tf.split(args_grad, [tf.reduce_prod(arg.shape) for arg in args])
-  args_grad = [tf.reshape(g, arg.shape) for g, arg in zip(args_grad, args)]
+  args_grad = tf.split(args_grad, [tf.reduce_prod(arg.shape) for arg in _args])
+  args_grad = [tf.reshape(g, arg.shape) for g, arg in zip(args_grad, _args)]
+
   return None, y_grad, time_grads, args_grad
 
 
@@ -87,7 +88,7 @@ def odeint(func, y0, t):
   def grad_fn(grad_output, variables=None):
     _, y_grad, time_grads, var_grad = odeint_grad(
         grad_output, func, yt, t, variables)
-    print(len(var_grad))
-    return [None, y_grad, time_grads], var_grad
+    grads_res =  var_grad
+    return (y_grad, grads_res)
 
   return yt, grad_fn
