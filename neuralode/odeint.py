@@ -1,4 +1,5 @@
 from types import FunctionType
+import scipy
 import tensorflow as tf
 
 from neuralode.utils import *
@@ -18,12 +19,14 @@ def _flat(tensor):
 
 def odeint_grad(grad_output, func, yt, t, _args):
   yshape = yt.shape[1:]
-  print(yt.shape)
+  #print(yt.shape)
   ysize = tf.reduce_prod(yshape)
   # print(ysize, args[0].shape)
   args = _flatten(_args)
 
   def backward_dynamics(state, t):
+    state = tf.convert_to_tensor(state, dtype=tf.float32)
+    t = tf.convert_to_tensor(t, dtype=tf.float32)
     y = tf.reshape(state[:ysize], yshape)
     adjoint_grad_y = state[ysize:2 * ysize]
 
@@ -44,7 +47,8 @@ def odeint_grad(grad_output, func, yt, t, _args):
 
     if len(f_params) == 0:
         vjp_params = tf.convert_to_tensor(0., dtype=vjp_y.dype)
-    return tf.concat([_flatten(fval), *vjp_y, vjp_t, vjp_params], 0)
+        
+    return tf.concat([_flatten(fval), *vjp_y, vjp_t, vjp_params], 0).numpy()
 
   y_grad = grad_output[-1]
   t0_grad = 0
@@ -57,17 +61,19 @@ def odeint_grad(grad_output, func, yt, t, _args):
     time_grads.append(new_t_grad)
     t0_grad = t0_grad - new_t_grad
 
-    rev_t = tf.convert_to_tensor([t[i], t[i - 1]])
+    rev_t = tf.convert_to_tensor([t[i - 1], t[i]])
+   
     backward_state = tf.concat([_flat(yt[i]), _flat(y_grad), t0_grad[None],
                                 args_grad], 0)
-    _t = -rev_t
+    #_t = -rev_t
     f_params = tuple(_args)
-    fc = lambda y, t: [-val for val in backward_dynamics(y, -t)]
+    
+    fc = lambda y, t: [val for val in backward_dynamics(y, t)]
 
-    backward_answer = tf.contrib.integrate.odeint(
-        lambda y0, t: fc(y0, t),
-        y0=backward_state,
-        t=_t)[-1]
+    
+    backward_answer = tf.convert_to_tensor(scipy.integrate.odeint(fc,
+        y0=backward_state.numpy(),
+        t=rev_t.numpy()), dtype=tf.float32)[-1]
     _, y_grad, t_grad, args_grad = tf.split(backward_answer,
                                             [ysize, ysize, 1, -1])
     y_grad = y_grad + _flat(grad_output[i - 1, :])
@@ -78,7 +84,7 @@ def odeint_grad(grad_output, func, yt, t, _args):
   args_grad = tf.split(args_grad, [tf.reduce_prod(arg.shape) for arg in _args])
   args_grad = [tf.reshape(g, arg.shape) for g, arg in zip(args_grad, _args)]
 
-  print(y_grad, time_grads, args_grad)
+  #print(y_grad, time_grads, args_grad)
 
   return None, y_grad, time_grads, args_grad
 
@@ -90,5 +96,5 @@ def odeint(func, y0, t):
     *grad_inputs, grad_variables = odeint_grad(grad_output, func, yt, t, variables)
     return grad_inputs, grad_variables
 
-  print(yt, grad_fn) 
+  #print(yt, grad_fn) 
   return yt, grad_fn
