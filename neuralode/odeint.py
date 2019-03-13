@@ -16,11 +16,9 @@ def _flat(tensor):
   return tf.reshape(tensor, (-1,))
 
 
-def odeint_grad(grad_output, func, yt, t, _args):
+def odeint_grad(grad_output, func, yt, t, _args, rtol=1e-6, atol=1e-12):
   yshape = yt.shape[1:]
-  print(yt.shape)
   ysize = tf.reduce_prod(yshape)
-  # print(ysize, args[0].shape)
   args = _flatten(_args)
 
   def backward_dynamics(state, t):
@@ -44,7 +42,7 @@ def odeint_grad(grad_output, func, yt, t, _args):
 
     if len(f_params) == 0:
         vjp_params = tf.convert_to_tensor(0., dtype=vjp_y.dype)
-    return tf.concat([_flatten(fval), *vjp_y, vjp_t, vjp_params], 0)
+    return tf.concat([_flatten(fval), vjp_y, vjp_t[None], vjp_params], 0)
 
   y_grad = grad_output[-1]
   t0_grad = 0
@@ -67,7 +65,7 @@ def odeint_grad(grad_output, func, yt, t, _args):
     backward_answer = tf.contrib.integrate.odeint(
         lambda y0, t: fc(y0, t),
         y0=backward_state,
-        t=_t)[-1]
+        t=_t, rtol=rtol, atol=atol)[-1]
     _, y_grad, t_grad, args_grad = tf.split(backward_answer,
                                             [ysize, ysize, 1, -1])
     y_grad = y_grad + _flat(grad_output[i - 1, :])
@@ -78,17 +76,16 @@ def odeint_grad(grad_output, func, yt, t, _args):
   args_grad = tf.split(args_grad, [tf.reduce_prod(arg.shape) for arg in _args])
   args_grad = [tf.reshape(g, arg.shape) for g, arg in zip(args_grad, _args)]
 
-  print(y_grad, time_grads, args_grad)
 
-  return None, y_grad, time_grads, args_grad
+  return tf.zeros(0), y_grad, time_grads, args_grad
 
 
 @tf.custom_gradient
-def odeint(func, y0, t):
-  yt = tf.contrib.integrate.odeint(func, y0, t)
+def odeint(func, y0, t, rtol=1e-6, atol=1e-12):
+  yt = tf.contrib.integrate.odeint(func, y0, t, rtol=rtol)
   def grad_fn(grad_output, variables=None):
-    *grad_inputs, grad_variables = odeint_grad(grad_output, func, yt, t, variables)
+    *grad_inputs, grad_variables = odeint_grad(grad_output, func, yt, t,
+                                               variables, rtol=rtol, atol=atol)
     return grad_inputs, grad_variables
 
-  print(yt, grad_fn) 
   return yt, grad_fn
