@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torch import nn
-
+import torch.nn.functional as F
 from neuralode.utils import euler, _check_none_zero
 
 
@@ -65,7 +65,6 @@ class OdeAdjoint(torch.autograd.Function):
 
             y_i = y_i.view(batch_size, *y_shape)
             a = a.view(batch_size, *y_shape)
-
             with torch.set_grad_enabled(True):
                 t_i = t_i.detach().requires_grad_(True)
                 y_i = y_i.detach().requires_grad_(True)

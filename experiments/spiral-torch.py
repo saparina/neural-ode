@@ -48,16 +48,16 @@ def plot_traj(obs=None, times=None, trajs=None, figsize=(16, 8), true_traj=None)
 
     plt.show()
 
-W = torch.tensor([[-0.1, -2.], [2., -0.1]])
+W = torch.tensor([[-0.1, -1.], [1., -0.1]])
 ode_trained = NeuralODE(LinearOdeTrained())
 ode_true = NeuralODE(LinearODE(W))
 
 
-z0 = torch.tensor([[0.5, 0.3]], requires_grad=True, dtype=torch.float32)
+z0 = torch.tensor([[0.6, 0.3]], requires_grad=True, dtype=torch.float32)
 plot_freq = 50
 t_max = 6.29*3
 n_points = 200
-n_steps = 1000
+n_steps = 2000
 index_np = np.arange(0, n_points, 1, dtype=np.int)
 index_np = np.hstack([index_np[:, None]])
 times_np = np.linspace(0, t_max, num=n_points)
@@ -96,5 +96,6 @@ for i in range(n_steps):
     if i % plot_freq == 0:
         z_p = ode_trained(z0, times, sequence=True)
 
+z_p = ode_trained(z0, times, sequence=True)
 plot_traj(obs=[obs], times=[times], trajs=[z_p])
 # exit()
