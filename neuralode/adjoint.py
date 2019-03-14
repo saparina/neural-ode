@@ -42,7 +42,7 @@ class OdeAdjoint(torch.autograd.Function):
             y = torch.zeros(time_len, bs, *z_shape).to(y0)
             y[0] = y0
             for i_t in range(time_len - 1):
-                y0 = solver(y0, t[i_t], t[i_t + 1], func)
+                y0 = solver(y0, t[i_t], t[i_t + 1], func, atol)
                 y[i_t + 1] = y0
 
         ctx.func = func
@@ -95,7 +95,7 @@ class OdeAdjoint(torch.autograd.Function):
                 adj_t[i_t] = adj_t[i_t] - dLdt_i
                 aug_y = torch.cat((y_i.view(batch_size, n_dim), adj_y,
                                    torch.zeros(batch_size, n_params).to(y), adj_t[i_t]), dim=-1)
-                aug_ans = solver(aug_y, t_i, t[i_t - 1], augmented_dynamics)
+                aug_ans = solver(aug_y, t_i, t[i_t - 1], augmented_dynamics, eps=ctx.atol)
 
                 adj_y[:] = aug_ans[:, n_dim:2 * n_dim]
                 adj_p[:] += aug_ans[:, 2 * n_dim:2 * n_dim + n_params]
