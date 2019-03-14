@@ -1,6 +1,5 @@
 from types import FunctionType
 import tensorflow as tf
-import scipy
 
 tfe = tf.contrib.eager
 
