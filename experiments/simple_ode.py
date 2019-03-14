@@ -1,7 +1,6 @@
 import numpy as np
 import tensorflow as tf
 from neuralode.odeint import odeint
-from neuralode.utils import _flatten
 import matplotlib
 import matplotlib.pyplot as plt
 tf.enable_eager_execution()
