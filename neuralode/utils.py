@@ -53,7 +53,7 @@ def get_mnist_loaders(batch_size=128, test_batch_size=1000, perc=1.0):
 
     train_eval_loader = DataLoader(
         datasets.MNIST(root='.data/mnist', train=True, download=True, transform=transform_test),
-        batch_size=test_batch_size, shuffle=False, num_workers=2, drop_last=True
+        batch_size=test_batch_size, shuffle=True, num_workers=2, drop_last=True
     )
 
     test_loader = DataLoader(
@@ -62,3 +62,29 @@ def get_mnist_loaders(batch_size=128, test_batch_size=1000, perc=1.0):
     )
 
     return train_loader, test_loader, train_eval_loader
+
+
+def get_cifar_loaders(batch_size=128, test_batch_size=1000, perc=1.0, im_size=64):
+
+    transform_train = transforms.Compose([
+        transforms.Resize(im_size),
+        transforms.RandomCrop(im_size),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ])
+    transform_test = transforms.Compose([
+        transforms.Resize(im_size),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ])
+
+    train_loader = DataLoader(
+        datasets.CIFAR10(root='.data/cifar', train=True, download=True, transform=transform_train), batch_size=batch_size,
+        shuffle=True, num_workers=3, drop_last=True)
+
+    test_loader = DataLoader(
+        datasets.CIFAR10(root='.data/cifar', train=False, download=True, transform=transform_test),
+        batch_size=test_batch_size, shuffle=False, num_workers=3, drop_last=True
+    )
+
+    return train_loader, test_loader, None

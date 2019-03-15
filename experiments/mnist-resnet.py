@@ -17,7 +17,7 @@ parser.add_argument('--batch_size', type=int, default=128)
 parser.add_argument('--data', type=str, default='mnist' )
 parser.add_argument('--save', type=str, default='./mnist_result')
 parser.add_argument('--save_every', type=int, default=10)
-
+parser.add_argument('--num_res_blocks', type=int, default=6)
 args = parser.parse_args()
 
 
@@ -132,6 +132,7 @@ def get_param_numbers(model):
 if __name__ == '__main__':
     use_continuous_ode = args.use_ode
     print("Use ode training ", use_continuous_ode)
+    res_blocks = args.num_res_blocks
     test_size = 1000
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if args.data == 'cifar':
@@ -143,7 +144,7 @@ if __name__ == '__main__':
         func = ConvBlockOde(64)
         feat = adj.NeuralODE(func)
     else:
-        feat = nn.Sequential(*[ResBlock(64, 64) for _ in range(6)])
+        feat = nn.Sequential(*[ResBlock(64, 64) for _ in range(res_blocks)])
     model = ContinuousResNet(feat, channels=number_channel).to(device)
     if args.data == 'cifar':
         train_loader, test_loader, _ = get_cifar_loaders(batch_size=args.batch_size, test_batch_size=test_size, perc=1.0)

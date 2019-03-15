@@ -24,14 +24,15 @@ def odeint_grad(grad_output, func, yt, t, _args, rtol=1e-6, atol=1e-12):
   def backward_dynamics(state, t):
     y = tf.reshape(state[:ysize], yshape)
     adjoint_grad_y = state[ysize:2 * ysize]
+    adjoint_grad_y = tf.reshape(adjoint_grad_y, yshape)
 
     with tf.GradientTape() as tape:
         tape.watch(t)
         tape.watch(y)
         fval = func(y, t)
-    vjp_t, vjp_y, vjp_params = tape.gradient(fval, [t, y, f_params])
+    vjp_t, vjp_y, vjp_params = tape.gradient(fval, [t, y, f_params], output_gradients=-adjoint_grad_y )
 
-    vjp_t = (tf.zeros_like(t, dtype=t.dtype),) if vjp_t is None else vjp_t
+    vjp_t = tf.zeros_like(t, dtype=t.dtype) if vjp_t is None else vjp_t
 
     vjp_params = tf.zeros_like(f_params, dtype=f_params.dtype) if vjp_params is None else vjp_params
 
