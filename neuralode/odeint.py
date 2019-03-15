@@ -76,6 +76,7 @@ def odeint_grad(grad_output, func, yt, t, variables=None,
 
   if variables:
     variables_grad = _unflatten(variables_grad, [v.shape for v in variables])
+  y_grad = tf.reshape(y_grad, yshape)
   return (tf.zeros(0), y_grad, time_grads), variables_grad
 
 
