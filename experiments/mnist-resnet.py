@@ -3,7 +3,7 @@ import argparse
 import torch
 import torch.nn as nn
 import neuralode.adjoint as adj
-from neuralode.utils import get_mnist_loaders
+from neuralode.utils import get_mnist_loaders, get_cifar_loaders
 from tqdm import tqdm
 import numpy as np
 import os
@@ -14,6 +14,7 @@ parser.add_argument('--use_ode', action='store_true')
 parser.add_argument('--max_epochs', type=int, default=100)
 parser.add_argument('--batch_size', type=int, default=128)
 
+parser.add_argument('--data', type=str, default='mnist' )
 parser.add_argument('--save', type=str, default='./mnist_result')
 parser.add_argument('--save_every', type=int, default=10)
 
@@ -53,7 +54,6 @@ class ConvBlockOde(adj.OdeWithGrad):
 
 
 class ResBlock(nn.Module):
-    expansion = 1
     def __init__(self, inplanes, planes, stride=1, downsample=None):
         super(ResBlock, self).__init__()
         self.norm1 = norm(inplanes)
@@ -64,26 +64,25 @@ class ResBlock(nn.Module):
         self.conv2 = conv3x3(planes, planes)
 
     def forward(self, x):
-        shortcut = x
-
+        residual = x
         out = self.relu(self.norm1(x))
 
         if self.downsample is not None:
-            shortcut = self.downsample(out)
+            residual = self.downsample(out)
 
         out = self.conv1(out)
         out = self.norm2(out)
         out = self.relu(out)
         out = self.conv2(out)
 
-        return out + shortcut
+        return out + residual
 
 
 class ContinuousResNet(nn.Module):
-    def __init__(self, feature):
+    def __init__(self, feature, channels=1):
         super(ContinuousResNet, self).__init__()
         self.downsampling = nn.Sequential(
-            nn.Conv2d(1, 64, 3, 1),
+            nn.Conv2d(channels, 64, 3, 1),
             norm(64),
             nn.ReLU(inplace=True),
             nn.Conv2d(64, 64, 4, 2, 1),
@@ -126,24 +125,6 @@ def train(epoch, train_loader, model, optimizer, device):
     print('Train loss: {:.4f}'.format(np.mean(train_losses)))
     return train_losses
 
-
-def test(test_loader, model, device):
-    accuracy = 0.0
-    num_items = 0
-
-    model.eval()
-    print(f"Testing...")
-    with torch.no_grad():
-        for batch_idx, (data, target) in tqdm(enumerate(test_loader),  total=len(test_loader)):
-            data = data.to(device)
-            target = target.to(device)
-            output = model(data)
-            accuracy += torch.sum(torch.argmax(output, dim=1) == target).item()
-            num_items += data.shape[0]
-    accuracy = accuracy * 100 / num_items
-    print("Accuracy: {}%".format(np.round(accuracy)))
-
-
 def get_param_numbers(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -152,16 +133,23 @@ if __name__ == '__main__':
     use_continuous_ode = args.use_ode
     print("Use ode training ", use_continuous_ode)
     test_size = 1000
-    device = torch.device('cuda' if  torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if args.data == 'cifar':
+        number_channel = 3
+    else:
+        number_channel = 1
+
     if use_continuous_ode:
         func = ConvBlockOde(64)
         feat = adj.NeuralODE(func)
     else:
         feat = nn.Sequential(*[ResBlock(64, 64) for _ in range(6)])
-    model = ContinuousResNet(feat).to(device)
-
-    train_loader, test_loader, train_eval_loader\
-        = get_mnist_loaders(batch_size=args.batch_size, test_batch_size=test_size, perc=1.0)
+    model = ContinuousResNet(feat, channels=number_channel).to(device)
+    if args.data == 'cifar':
+        train_loader, test_loader, _ = get_cifar_loaders(batch_size=args.batch_size, test_batch_size=test_size, perc=1.0)
+    else:
+        train_loader, test_loader, train_eval_loader\
+            = get_mnist_loaders(batch_size=args.batch_size, test_batch_size=test_size, perc=1.0)
     optimizer = torch.optim.Adam(model.parameters())
     print('Trained model has {} parameters'.format(get_param_numbers(model)))
     for epoch in range(1, args.max_epochs + 1):
