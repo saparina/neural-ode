@@ -1,12 +1,16 @@
 import argparse
+import os
+import time
+
+import numpy as np
+from tqdm import tqdm
 
 import torch
 import torch.nn as nn
+
 import neuralode.adjoint as adj
 from neuralode.utils import get_mnist_loaders, get_cifar_loaders
-from tqdm import tqdm
-import numpy as np
-import os
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--atol', type=float, default=1e-3)
@@ -17,7 +21,8 @@ parser.add_argument('--batch_size', type=int, default=128)
 parser.add_argument('--data', type=str, default='mnist' )
 parser.add_argument('--save', type=str, default='./mnist_result')
 parser.add_argument('--save_every', type=int, default=10)
-parser.add_argument('--num_res_blocks', type=int, default=6)
+parser.add_argument('--log_every', type=int, default=10)
+
 args = parser.parse_args()
 
 
@@ -132,7 +137,6 @@ def get_param_numbers(model):
 if __name__ == '__main__':
     use_continuous_ode = args.use_ode
     print("Use ode training ", use_continuous_ode)
-    res_blocks = args.num_res_blocks
     test_size = 1000
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if args.data == 'cifar':
@@ -144,7 +148,7 @@ if __name__ == '__main__':
         func = ConvBlockOde(64)
         feat = adj.NeuralODE(func)
     else:
-        feat = nn.Sequential(*[ResBlock(64, 64) for _ in range(res_blocks)])
+        feat = nn.Sequential(*[ResBlock(64, 64) for _ in range(6)])
     model = ContinuousResNet(feat, channels=number_channel).to(device)
     if args.data == 'cifar':
         train_loader, test_loader, _ = get_cifar_loaders(batch_size=args.batch_size, test_batch_size=test_size, perc=1.0)
@@ -153,8 +157,16 @@ if __name__ == '__main__':
             = get_mnist_loaders(batch_size=args.batch_size, test_batch_size=test_size, perc=1.0)
     optimizer = torch.optim.Adam(model.parameters())
     print('Trained model has {} parameters'.format(get_param_numbers(model)))
+
+    # save all losses, epoch times, accuracy
+    train_loss_all = []
+    epoch_time_all = []
+    accuracy_all = []
     for epoch in range(1, args.max_epochs + 1):
-        train(epoch, train_loader, model, optimizer, device)
+        t_start = time.time()
+        train_loss_all.append(train(epoch, train_loader, model, optimizer, device))
+        epoch_time_all.append(time.time() - t_start)
+
         accuracy = 0.0
         num_items = 0
 
@@ -169,6 +181,12 @@ if __name__ == '__main__':
                 num_items += data.shape[0]
         accuracy = accuracy * 100 / num_items
         print("Accuracy: {}%".format(np.round(accuracy, 3)))
+        accuracy_all.append(np.round(accuracy, 3))
         model.train()
+
         if epoch % args.save_every == 0:
             torch.save({'state_dict': model.state_dict()}, os.path.join(args.save, 'model.pth'))
+        if epoch % args.log_every == 0:
+            torch.save({'accuracy': accuracy_all, 
+                        'train_loss': train_loss_all,
+                        'epoch_time': epoch_time_all}, os.path.join(args.save, 'log.pkl'))
