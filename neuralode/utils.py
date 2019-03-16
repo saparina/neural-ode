@@ -54,7 +54,7 @@ def get_mnist_loaders(batch_size=128, test_batch_size=1000, perc=1.0):
 
     train_eval_loader = DataLoader(
         datasets.MNIST(root='.data/mnist', train=True, download=True, transform=transform_test),
-        batch_size=test_batch_size, shuffle=False, num_workers=2, drop_last=True
+        batch_size=test_batch_size, shuffle=True, num_workers=2, drop_last=True
     )
 
     test_loader = DataLoader(
