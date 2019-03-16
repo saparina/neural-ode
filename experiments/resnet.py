@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 import neuralode.adjoint as adj
 
@@ -83,6 +84,7 @@ class ContinuousResNet(nn.Module):
         x = self.feature(x)
         # batch x 64 x 6 x 6
         x = self.norm(x)
+        x = F.relu(x)
         x = self.avg_pool(x)
         shape = torch.prod(torch.tensor(x.shape[1:])).item()
         x = x.view(-1, shape)

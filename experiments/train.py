@@ -93,6 +93,9 @@ if __name__ == '__main__':
         optimizer = torch.optim.RMSprop(model.parameters(), lr=args.lr, weight_decay=5e-4 if args.weight_decay else 0)
     else:
         raise Exception('Unknown optimizer')
+
+    sheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.1)
+
     print('Trained model has {} parameters'.format(get_param_numbers(model)))
 
     # save all losses, epoch times, accuracy
@@ -104,6 +107,8 @@ if __name__ == '__main__':
         train_loss_all.append(train(epoch, train_loader, model, optimizer, device))
         epoch_time_all.append(time.time() - t_start)
 
+        sheduler.step()
+        
         accuracy = 0.0
         num_items = 0
 
