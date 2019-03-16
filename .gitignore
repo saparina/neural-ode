@@ -106,3 +106,6 @@ venv.bak/
 # Vim <3
 *.swp
 *.swo
+
+#SFTP
+sftp-config.json
