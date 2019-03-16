@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
-from neuralode.utils import euler, _check_none_zero
+from neuralode.utils import euler, runge_kutta, _check_none_zero
 
 
 class OdeWithGrad(nn.Module):
@@ -32,8 +32,7 @@ class OdeWithGrad(nn.Module):
 
 class OdeAdjoint(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, y0, t, flat_parameters, func, solver=euler,
-                rtol=1e-4, atol=1e-2):
+    def forward(ctx, y0, t, flat_parameters, func, tol, solver):
         assert isinstance(func, OdeWithGrad)
         bs, *z_shape = y0.size()
         time_len = t.size(0)
@@ -42,13 +41,13 @@ class OdeAdjoint(torch.autograd.Function):
             y = torch.zeros(time_len, bs, *z_shape).to(y0)
             y[0] = y0
             for i_t in range(time_len - 1):
-                y0 = solver(y0, t[i_t], t[i_t + 1], func, atol)
+                y0 = solver(y0, t[i_t], t[i_t + 1], func, tol)
                 y[i_t + 1] = y0
 
         ctx.func = func
         ctx.solver = solver
         ctx.save_for_backward(t, y.clone(), flat_parameters)
-        ctx.rtol, ctx.atol = rtol, atol
+        ctx.tol = tol
         return y
 
     @staticmethod
@@ -95,7 +94,7 @@ class OdeAdjoint(torch.autograd.Function):
                 adj_t[i_t] = adj_t[i_t] - dLdt_i
                 aug_y = torch.cat((y_i.view(batch_size, n_dim), adj_y,
                                    torch.zeros(batch_size, n_params).to(y), adj_t[i_t]), dim=-1)
-                aug_ans = solver(aug_y, t_i, t[i_t - 1], augmented_dynamics, eps=ctx.atol)
+                aug_ans = solver(aug_y, t_i, t[i_t - 1], augmented_dynamics, eps=ctx.tol)
 
                 adj_y[:] = aug_ans[:, n_dim:2 * n_dim]
                 adj_p[:] += aug_ans[:, 2 * n_dim:2 * n_dim + n_params]
@@ -108,18 +107,20 @@ class OdeAdjoint(torch.autograd.Function):
             adj_y += dLdy_0
             adj_t[0] = adj_t[0] - dLdt_0
 
-        return adj_y.view(batch_size, *y_shape), adj_t, adj_p, None
+        return adj_y.view(batch_size, *y_shape), adj_t, adj_p, None, None, None
 
 
 class NeuralODE(nn.Module):
-    def __init__(self, func):
+    def __init__(self, func, tol=1e-3, solver='euler'):
         super(NeuralODE, self).__init__()
         assert isinstance(func, OdeWithGrad)
         self.func = func
+        self.tol = tol
+        self.solver = runge_kutta if solver == 'runge_kutta' else euler
 
     def forward(self, z0, t=torch.Tensor([0., 1.]), sequence=False):
         t = t.to(z0)
-        z = OdeAdjoint.apply(z0, t, self.func.flatten_parameters(), self.func)
+        z = OdeAdjoint.apply(z0, t, self.func.flatten_parameters(), self.func, self.tol, self.solver)
         if sequence:
             return z
         else:

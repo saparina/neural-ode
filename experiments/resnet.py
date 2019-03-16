@@ -13,10 +13,14 @@ from neuralode.utils import get_mnist_loaders, get_cifar_loaders
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--atol', type=float, default=1e-3)
-parser.add_argument('--use_ode', action='store_true')
+
 parser.add_argument('--max_epochs', type=int, default=100)
 parser.add_argument('--batch_size', type=int, default=128)
+parser.add_argument('--num_res_blocks', type=int, default=6)
+
+parser.add_argument('--use_ode', action='store_true')
+parser.add_argument('--tol', type=float, default=1e-3)
+parser.add_argument('--solver', type=str, default='euler')
 
 parser.add_argument('--data', type=str, default='mnist' )
 parser.add_argument('--save', type=str, default='./mnist_result')
@@ -117,7 +121,7 @@ def train(epoch, train_loader, model, optimizer, device):
     train_losses = []
     model.train()
     criterion = nn.CrossEntropyLoss().to(device)
-    print(f"Training Epoch {epoch} ")
+    print("Training Epoch {}".format(epoch))
     for batch_idx, (data, target) in tqdm(enumerate(train_loader), total=len(train_loader)):
         optimizer.zero_grad()
         output = model(data.to(device))
@@ -135,6 +139,9 @@ def get_param_numbers(model):
 
 
 if __name__ == '__main__':
+    if not os.path.isdir(args.save):
+        os.mkdir(args.save)
+
     use_continuous_ode = args.use_ode
     print("Use ode training ", use_continuous_ode)
     test_size = 1000
@@ -146,9 +153,9 @@ if __name__ == '__main__':
 
     if use_continuous_ode:
         func = ConvBlockOde(64)
-        feat = adj.NeuralODE(func)
+        feat = adj.NeuralODE(func, tol=args.tol, solver=args.solver)
     else:
-        feat = nn.Sequential(*[ResBlock(64, 64) for _ in range(6)])
+        feat = nn.Sequential(*[ResBlock(64, 64) for _ in range(args.num_res_blocks)])
     model = ContinuousResNet(feat, channels=number_channel).to(device)
     if args.data == 'cifar':
         train_loader, test_loader, _ = get_cifar_loaders(batch_size=args.batch_size, test_batch_size=test_size, perc=1.0)
@@ -171,7 +178,7 @@ if __name__ == '__main__':
         num_items = 0
 
         model.eval()
-        print(f"Testing...")
+        print("Testing...")
         with torch.no_grad():
             for batch_idx, (data, target) in tqdm(enumerate(test_loader), total=len(test_loader)):
                 data = data.to(device)
@@ -185,7 +192,7 @@ if __name__ == '__main__':
         model.train()
 
         if epoch % args.save_every == 0:
-            torch.save({'state_dict': model.state_dict()}, os.path.join(args.save, 'model.pth'))
+            torch.save({'state_dict': model.state_dict()}, os.path.join(args.save, 'model_' + str(epoch) + '.pth'))
         if epoch % args.log_every == 0:
             torch.save({'accuracy': accuracy_all, 
                         'train_loss': train_loss_all,
