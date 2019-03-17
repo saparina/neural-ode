@@ -99,6 +99,8 @@ class ContinuousResNet(nn.Module):
         return out
 
 if __name__ == '__main__':
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     func = ConvBlockOde(64)
     feat = adj.NeuralODE(func)
     sequence_max_length = SEQ_LEN
@@ -107,19 +109,18 @@ if __name__ == '__main__':
     database_path = '.data/ag_news/'
     data_helper = DataHelper(sequence_max_length=sequence_max_length)
     vocab = len(data_helper.char_dict.keys()) + 2
-    ode_res = ContinuousResNet(feat,vocab_size=vocab)
-    criterion = nn.CrossEntropyLoss()
+    ode_res = ContinuousResNet(feat,vocab_size=vocab).to(device)
+    criterion = nn.CrossEntropyLoss().to(device)
 
     train_data, train_label, test_data, test_label = data_helper.load_dataset(database_path)
     train_batches = data_helper.batch_iter(np.column_stack((train_data, train_label)), batch_size, num_epochs)
-    optimizer = torch.optim.SGD(ode_res.parameters(), lr=1e-2, momentum=0.9,
-                                weight_decay=5e-4)
+    optimizer = torch.optim.SGD(ode_res.parameters(), lr=1e-2, momentum=0.9, weight_decay=5e-4)
     train_losses = []
     print("Test training phase")
     for batch in train_batches:
         train_data_b,label = batch
-        train_data_b = torch.from_numpy(train_data_b)
-        label = torch.from_numpy(label).squeeze()
+        train_data_b = torch.from_numpy(train_data_b).to(device)
+        label = torch.from_numpy(label).squeeze().to(device)
         output = ode_res(train_data)
         loss = criterion(output, label)
         loss.backward()
