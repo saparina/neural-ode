@@ -1,6 +1,12 @@
+import argparse
+import os
+
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from tqdm import tqdm
+
 import neuralode.adjoint as adj
 from experiments.texts.data_helper import DataHelper
 
@@ -10,24 +16,40 @@ def norm(dim, type='group_norm'):
     return nn.BatchNorm1d(dim)
 
 # maximum length of an input sequence
-SEQ_LEN = 1014
-BATCH_SIZE = 64
-MAX_EPOCH = 18
-
-embd_size = 16
 KERNEL_SIZE = 3
 STRIDE = 1
 PADDING = 1
 
-save_every = 10
+parser = argparse.ArgumentParser()
+# train
+parser.add_argument('--data', type=str, default='ag_news' )
+parser.add_argument('--max_epochs', type=int, default=100)
+parser.add_argument('--batch_size', type=int, default=128)
+parser.add_argument('--embd_size', type=int, default=16)
+parser.add_argument('--seq_len', type=int, default=16)
+parser.add_argument('--num_res_blocks', type=int, default=6)
+parser.add_argument('--optimizer', type=str, default='adam')
+parser.add_argument('--lr', type=float, default=1e-3)
+parser.add_argument('--weight_decay', action='store_true')
 
-PAD = "<PAD>" # padding
-PAD_IDX = 0
 
+# ode
+parser.add_argument('--use_ode', action='store_true')
+parser.add_argument('--tol', type=float, default=1e-3)
+parser.add_argument('--solver', type=str, default='euler')
+
+# logger and saver
+parser.add_argument('--save', type=str, default='./result')
+parser.add_argument('--save_every', type=int, default=1000)
+parser.add_argument('--log_every', type=int, default=1)
+
+args = parser.parse_args()
 
 def conv1d(in_feats, out_feats, stride=1):
     return nn.Conv1d(in_feats, out_feats, kernel_size=3, stride=stride, padding=1, bias=False)
 
+def get_param_numbers(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def add_time(in_tensor, t):
     bs, d, s = in_tensor.shape
@@ -52,11 +74,10 @@ class ConvBlockOde(adj.OdeWithGrad):
 
 
 class ConvBlock1D(nn.Module):
-    def __init__(self, in_channels, out_channels, first_stride):
+    def __init__(self, in_channels, out_channels):
         super(ConvBlock1D, self).__init__()
-        # architecture
-        self.sequential = nn.Sequential(
-            nn.Conv1d(in_channels, out_channels, KERNEL_SIZE, first_stride, PADDING),
+        self.conv_block = nn.Sequential(
+            nn.Conv1d(in_channels, out_channels, KERNEL_SIZE, STRIDE, PADDING),
             nn.BatchNorm1d(out_channels),
             nn.ReLU(),
             nn.Conv1d(out_channels, out_channels, KERNEL_SIZE, STRIDE, PADDING),
@@ -65,7 +86,7 @@ class ConvBlock1D(nn.Module):
         )
 
     def forward(self, x):
-        return self.sequential(x)
+        return self.conv_block(x)
 
 
 class ContinuousResNet(nn.Module):
@@ -76,55 +97,96 @@ class ContinuousResNet(nn.Module):
         self.conv = nn.Conv1d(embd_size, 64, KERNEL_SIZE, STRIDE, PADDING)
         self.feature = feature
         self.norm = norm(64)
+        hidden = 256
         self.fc = nn.Sequential(
-            nn.Linear(64 * self.k, 512),
+            nn.Linear(64 * self.k, hidden),
             nn.ReLU(),
-            nn.Linear(512, 512),
+            nn.Linear(hidden, hidden),
             nn.ReLU(),
-            nn.Linear(512, num_labels)
+            nn.Linear(hidden, num_labels)
         )
-        self.softmax = nn.Softmax(1)
-
+        self.softmax = nn.LogSoftmax(1)
 
     def forward(self, x):
         x = self.embed(x)
         x = x.permute(0,2,1)
         x = self.conv(x)
-        x = self.feature(x)
-        x = self.norm(x)
+        # x = self.feature(x)
+        # x = self.norm(x)
         x = F.relu(x)
         h = x.topk(self.k)[0].view(-1, 64 * self.k)
-        x = self.fc(h)
-        out = self.softmax(x)
-        return out
+        x = self.softmax(self.fc(h))
+        return x
+
 
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    func = ConvBlockOde(64)
-    feat = adj.NeuralODE(func)
-    sequence_max_length = SEQ_LEN
-    batch_size = BATCH_SIZE
-    num_epochs = MAX_EPOCH
+    use_ode = args.use_ode
+    if use_ode:
+        func = ConvBlockOde(64)
+        feat = adj.NeuralODE(func)
+    else:
+        feat = ConvBlock1D(64, 64)
+    sequence_max_length = args.seq_len
+    batch_size = args.batch_size
+    max_epochs = args.max_epochs
     database_path = '.data/ag_news/'
     data_helper = DataHelper(sequence_max_length=sequence_max_length)
     vocab = len(data_helper.char_dict.keys()) + 2
-    ode_res = ContinuousResNet(feat,vocab_size=vocab).to(device)
-    criterion = nn.CrossEntropyLoss().to(device)
+    model = ContinuousResNet(feat,vocab_size=vocab).to(device)
+    criterion = nn.NLLLoss().to(device)
+    train_loss_all = []
 
-    train_data, train_label, test_data, test_label = data_helper.load_dataset(database_path)
-    train_batches = data_helper.batch_iter(np.column_stack((train_data, train_label)), batch_size, num_epochs)
-    optimizer = torch.optim.SGD(ode_res.parameters(), lr=1e-2, momentum=0.9, weight_decay=5e-4)
-    train_losses = []
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
     print("Test training phase")
-    for batch in train_batches:
-        train_data_b,label = batch
-        train_data_b = torch.from_numpy(train_data_b).to(device)
-        label = torch.from_numpy(label).squeeze().to(device)
-        output = ode_res(train_data)
-        loss = criterion(output, label)
-        loss.backward()
-        optimizer.step()
-        print(loss.item())
-        train_losses += [loss.item()]
+    epoch_time_all = []
+    train_loss_all = []
+    for epoch in range(max_epochs):
+        train_losses = []
 
+        t_start = time.time()
+
+        train_data, train_label, test_data, test_label = data_helper.load_dataset(database_path)
+        train_batches = data_helper.batch_iter(np.column_stack((train_data, train_label)), batch_size, max_epochs)
+        for j, batch in enumerate(train_batches):
+            train_data_b,label = batch
+            train_data_b = torch.from_numpy(train_data_b).to(device)
+            label = torch.from_numpy(label).squeeze().to(device)
+            model.zero_grad()
+
+            output = model(train_data_b)
+            loss = criterion(output, label)
+            loss.backward()
+            optimizer.step()
+
+            train_losses += [loss.item()]
+
+            if j % args.save_every == 0:
+                print('Loss:', loss.item())
+
+        epoch_time_all.append(time.time() - t_start)
+
+        print('Train loss: {:.4f}'.format(np.mean(train_losses)))
+
+        test_loader = data_helper.batch_iter(np.column_stack((test_data, test_label)), batch_size, max_epochs)
+
+        model.eval()
+        accuracy_all = 0
+        print("Testing...")
+        num_items = 0
+        with torch.no_grad():
+            for batch_idx, (data, target) in tqdm(enumerate(test_loader), total=len(test_loader)):
+                data = data.to(device)
+                target = target.to(device)
+                output = model(data)
+                accuracy += torch.sum(torch.argmax(output, dim=1) == target).item()
+                num_items += data.shape[0]
+        accuracy = accuracy * 100 / num_items
+        print("Accuracy: {}%".format(np.round(accuracy, 3)))
+        accuracy_all.append(np.round(accuracy, 3))
+        model.train()
+        torch.save({'state_dict': model.state_dict()}, os.path.join(args.save, 'model_' + str(epoch) + '.pth'))
+
+        torch.save({'accuracy': accuracy_all,
+                    'train_loss': train_loss_all,
+                    'epoch_time': epoch_time_all}, os.path.join(args.save, 'log.pkl'))

@@ -45,7 +45,6 @@ class DataHelper():
                 else:
                     labels[i] = int(row['class']) - 1
                 text = row['fields'][-1].lower()
-
                 all_data[i] = self.char2vec(text)
         f.close()
         return all_data, labels
@@ -57,8 +56,8 @@ class DataHelper():
                 classes.append(line.strip())
         f.close()
         num_classes = len(classes)
-        train_data, train_label = self.load_csv_file(dataset_path+'train.csv', num_classes)
-        test_data, test_label = self.load_csv_file(dataset_path+'test.csv', num_classes, train=False)
+        train_data, train_label = self.load_csv_file(dataset_path + 'train.csv', num_classes)
+        test_data, test_label = self.load_csv_file(dataset_path + 'test.csv', num_classes, train=False)
         print(train_data.shape, test_data.shape)
         return train_data, train_label, test_data, test_label
 
