@@ -64,19 +64,19 @@ class DataHelper():
     def batch_iter(self, data, batch_size, num_epochs, shuffle=True):
         data_size = len(data)
         num_batches_per_epoch = int((len(data)-1)/batch_size) + 1
-        for epoch in range(num_epochs):
-            if shuffle:
-                shuffle_indices = np.random.permutation(np.arange(data_size))
-                shuffled_data = data[shuffle_indices]
-            else:
-                shuffled_data = data
-            for batch_num in range(num_batches_per_epoch):
-                start_index = batch_num * batch_size
-                end_index = min((batch_num + 1) * batch_size, data_size)
-                batch = shuffled_data[start_index:end_index]
-                # batch_data, label = batch[:,  self.sequence_max_length-1], batch[:, -1]
-                batch_data, label = np.split(batch, [self.sequence_max_length],axis=1)
-                yield np.array(batch_data, dtype=np.int), label
+        # for epoch in range(num_epochs):
+        if shuffle:
+            shuffle_indices = np.random.permutation(np.arange(data_size))
+            shuffled_data = data[shuffle_indices]
+        else:
+            shuffled_data = data
+        for batch_num in range(num_batches_per_epoch):
+            start_index = batch_num * batch_size
+            end_index = min((batch_num + 1) * batch_size, data_size)
+            batch = shuffled_data[start_index:end_index]
+            # batch_data, label = batch[:,  self.sequence_max_length-1], batch[:, -1]
+            batch_data, label = np.split(batch, [self.sequence_max_length],axis=1)
+            yield np.array(batch_data, dtype=np.int), label
 
 
 if __name__ == '__main__':

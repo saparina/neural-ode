@@ -26,8 +26,8 @@ parser.add_argument('--data', type=str, default='ag_news' )
 parser.add_argument('--max_epochs', type=int, default=100)
 parser.add_argument('--batch_size', type=int, default=128)
 parser.add_argument('--embd_size', type=int, default=16)
-parser.add_argument('--seq_len', type=int, default=16)
-parser.add_argument('--num_res_blocks', type=int, default=6)
+parser.add_argument('--seq_len', type=int, default=1014)
+parser.add_argument('--num_blocks', type=int, default=6)
 parser.add_argument('--optimizer', type=str, default='adam')
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--weight_decay', action='store_true')
@@ -39,17 +39,20 @@ parser.add_argument('--tol', type=float, default=1e-3)
 parser.add_argument('--solver', type=str, default='euler')
 
 # logger and saver
-parser.add_argument('--save', type=str, default='./result')
-parser.add_argument('--save_every', type=int, default=1000)
+parser.add_argument('--save', type=str, default='./result_text')
+parser.add_argument('--save_every', type=int, default=20)
 parser.add_argument('--log_every', type=int, default=1)
 
 args = parser.parse_args()
 
+
 def conv1d(in_feats, out_feats, stride=1):
     return nn.Conv1d(in_feats, out_feats, kernel_size=3, stride=stride, padding=1, bias=False)
 
+
 def get_param_numbers(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 
 def add_time(in_tensor, t):
     bs, d, s = in_tensor.shape
@@ -105,42 +108,47 @@ class ContinuousResNet(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden, num_labels)
         )
-        self.softmax = nn.LogSoftmax(1)
 
     def forward(self, x):
         x = self.embed(x)
         x = x.permute(0,2,1)
         x = self.conv(x)
-        # x = self.feature(x)
-        # x = self.norm(x)
+        x = self.feature(x)
+        x = self.norm(x)
         x = F.relu(x)
         h = x.topk(self.k)[0].view(-1, 64 * self.k)
-        x = self.softmax(self.fc(h))
+        x = self.fc(h)
         return x
 
 
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if not os.path.exists(args.save):
+        os.makedirs(args.save)
+
     use_ode = args.use_ode
     if use_ode:
         func = ConvBlockOde(64)
         feat = adj.NeuralODE(func)
     else:
-        feat = ConvBlock1D(64, 64)
+        feat = nn.Sequential(*[ConvBlock1D(64, 64) for _ in range(args.num_blocks)])
+
     sequence_max_length = args.seq_len
     batch_size = args.batch_size
     max_epochs = args.max_epochs
     database_path = '.data/ag_news/'
     data_helper = DataHelper(sequence_max_length=sequence_max_length)
     vocab = len(data_helper.char_dict.keys()) + 2
-    model = ContinuousResNet(feat,vocab_size=vocab).to(device)
-    criterion = nn.NLLLoss().to(device)
+    model = ContinuousResNet(feat, vocab_size=vocab).to(device)
+    criterion = nn.CrossEntropyLoss().to(device)
     train_loss_all = []
 
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
-    print("Test training phase")
     epoch_time_all = []
     train_loss_all = []
+    accuracy_all = []
+    print('Trained model has {} parameters'.format(get_param_numbers(model)))
+
     for epoch in range(max_epochs):
         train_losses = []
 
@@ -148,7 +156,10 @@ if __name__ == '__main__':
 
         train_data, train_label, test_data, test_label = data_helper.load_dataset(database_path)
         train_batches = data_helper.batch_iter(np.column_stack((train_data, train_label)), batch_size, max_epochs)
-        for j, batch in enumerate(train_batches):
+
+        train_size = train_data.shape[0] // batch_size
+        test_size = test_data.shape[0] // batch_size
+        for j, batch in tqdm(enumerate(train_batches), total=train_size):
             train_data_b,label = batch
             train_data_b = torch.from_numpy(train_data_b).to(device)
             label = torch.from_numpy(label).squeeze().to(device)
@@ -161,27 +172,23 @@ if __name__ == '__main__':
 
             train_losses += [loss.item()]
 
-            if j % args.save_every == 0:
-                print('Loss:', loss.item())
-
         epoch_time_all.append(time.time() - t_start)
-
+        train_loss_all.append(train_losses)
         print('Train loss: {:.4f}'.format(np.mean(train_losses)))
 
         test_loader = data_helper.batch_iter(np.column_stack((test_data, test_label)), batch_size, max_epochs)
 
         model.eval()
-        accuracy_all = 0
         print("Testing...")
         num_items = 0
+        accuracy = 0
         with torch.no_grad():
-            for batch_idx, (data, target) in tqdm(enumerate(test_loader), total=len(test_loader)):
-                data = data.to(device)
-                target = target.to(device)
+            for batch_idx, (data, target) in tqdm(enumerate(test_loader), total=test_size):
+                data = torch.from_numpy(data).to(device)
+                target = torch.from_numpy(target).squeeze().to(device)
                 output = model(data)
-                accuracy += torch.sum(torch.argmax(output, dim=1) == target).item()
-                num_items += data.shape[0]
-        accuracy = accuracy * 100 / num_items
+                accuracy += torch.sum((torch.argmax(output, dim=1) == target).long()).item()
+        accuracy = accuracy * 100 / test_data.shape[0]
         print("Accuracy: {}%".format(np.round(accuracy, 3)))
         accuracy_all.append(np.round(accuracy, 3))
         model.train()
