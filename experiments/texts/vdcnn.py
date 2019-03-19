@@ -129,7 +129,7 @@ if __name__ == '__main__':
     use_ode = args.use_ode
     if use_ode:
         func = ConvBlockOde(64)
-        feat = adj.NeuralODE(func)
+        feat = adj.NeuralODE(func, tol=args.tol, solver=args.solver)
     else:
         feat = nn.Sequential(*[ConvBlock1D(64, 64) for _ in range(args.num_blocks)])
 
@@ -143,7 +143,7 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss().to(device)
     train_loss_all = []
 
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, momentum=0.9)
     epoch_time_all = []
     train_loss_all = []
     accuracy_all = []
