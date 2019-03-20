@@ -87,7 +87,8 @@ class ConvBlock1D(nn.Module):
         )
 
     def forward(self, x):
-        return self.conv_block(x)
+        residual = x
+        return self.conv_block(x) + residual
 
 
 class ContinuousResNet(nn.Module):
