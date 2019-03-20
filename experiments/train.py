@@ -5,12 +5,9 @@ import time
 import numpy as np
 from tqdm import tqdm
 
-import torch
-import torch.nn as nn
-
 import neuralode.adjoint as adj
-from neuralode.utils import get_mnist_loaders, get_cifar_loaders
-from resnet import *
+from experiments.data_helper import get_mnist_loaders, get_cifar_loaders
+from experiments.resnet import *
 
 
 parser = argparse.ArgumentParser()
@@ -35,7 +32,6 @@ parser.add_argument('--save_every', type=int, default=10)
 parser.add_argument('--log_every', type=int, default=10)
 
 args = parser.parse_args()
-
 
 
 def train(epoch, train_loader, model, optimizer, device):
@@ -87,9 +83,9 @@ if __name__ == '__main__':
 
     if args.optimizer.lower() == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=5e-4 if args.weight_decay else 0)
-    elif args.optimizer.lower()  == 'sgd':
+    elif args.optimizer.lower() == 'sgd':
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4 if args.weight_decay else 0)
-    elif args.optimizer.lower()  == 'rmsprop':
+    elif args.optimizer.lower() == 'rmsprop':
         optimizer = torch.optim.RMSprop(model.parameters(), lr=args.lr, weight_decay=5e-4 if args.weight_decay else 0)
     else:
         raise Exception('Unknown optimizer')

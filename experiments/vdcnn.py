@@ -1,27 +1,25 @@
 import argparse
 import os
-
 import time
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 
 import neuralode.adjoint as adj
-from experiments.texts.data_helper import DataHelper
+from experiments.data_helper import DataHelper
 
-import numpy as np
 
 def norm(dim, type='group_norm'):
     return nn.BatchNorm1d(dim)
 
-# maximum length of an input sequence
 KERNEL_SIZE = 3
 STRIDE = 1
 PADDING = 1
 
 parser = argparse.ArgumentParser()
-# train
 parser.add_argument('--data', type=str, default='ag_news' )
 parser.add_argument('--max_epochs', type=int, default=100)
 parser.add_argument('--batch_size', type=int, default=128)
