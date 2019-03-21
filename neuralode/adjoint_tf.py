@@ -28,8 +28,6 @@ def odeint_grad(grad_output, func, yt, t, variables=None,
   ysize = tf.reduce_prod(yshape)
 
   def backward_dynamics(state, t):
-    state = tf.convert_to_tensor(state, dtype=tf.float32)
-    t = tf.convert_to_tensor(t, dtype=tf.float32)
     y = tf.reshape(state[:ysize], yshape)
     adjoint_grad_y = tf.reshape(state[ysize:2 * ysize], yshape)
 
