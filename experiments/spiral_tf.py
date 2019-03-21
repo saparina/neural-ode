@@ -99,13 +99,13 @@ pred_y = tf.contrib.integrate.odeint(lambda y0, t: model_func(y0, t), obs[0], ti
 # training
 lr = 1e-3
 optimizer = tf.train.AdamOptimizer(lr)
-niters = 10
+niters = 500
 log_freq = 1
 for i in range(1, niters + 1):
   batch_y0, batch_t = create_batch()
   # batch_y0, batch_t, batch_y = get_batch()
   with tf.GradientTape() as tape:
-    pred_y = odeint(model_func, batch_y0[0], batch_t)
+    pred_y = odeint(model_func, batch_y0[0], batch_t, rtol=1e-3, atol=1e-3)
     print(pred_y.shape, batch_y.shape)
     loss = tf.reduce_mean(tf.abs(pred_y - batch_y0))
 
@@ -113,10 +113,10 @@ for i in range(1, niters + 1):
   grad_vars = zip(grads, model.variables)
   optimizer.apply_gradients(grad_vars)
   if i % log_freq == 0:
-    pred_y = odeint(model_func, true_y0, t)
+    pred_y = odeint(model_func, true_y0, t, rtol=1e-3, atol=1e-3)
     loss = tf.reduce_mean(tf.abs(pred_y - true_y))
     print('Iter {} | Loss {}'.format(i, loss.numpy()))
 
-pred_y = odeint(model_func, true_y0, t)
+pred_y = odeint(model_func, true_y0, t, rtol=1e-3, atol=1e-3)
 true_y_obs = tf.contrib.integrate.odeint(lambda y0, t: f(y0, t), true_y0, t).numpy()
 plot_traj([true_y_obs], [t], [pred_y])
