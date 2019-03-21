@@ -47,9 +47,9 @@ Test Accuracy           |  Loss
 ![mnist_score](https://github.com/saparina/neural-ode/blob/master/imgs/mnist_score.png) | ![mnist_loss](https://github.com/saparina/neural-ode/blob/master/imgs/mnist_loss.png)
 
 
-| Model                | Test Error, % | Number of  parameters | Time (s/epoch) |
+| Model                | Test Error, % | #  parameters | Time (s/epoch) |
 |----------------------|---------------|-----------------------|----------------|
-| ResNet(6)              | 0.34          | 577                   | 13.18         |
+| ResNet(6)              | 0.34          | 577 K                   | 13.18         |
 | ResNet(1)              | 0.37       | 207 K                 | 11.21          |
 | OdeNet (Runge-Kutta) |  0.45            |  207 K                     |         254.42        |
 
@@ -81,9 +81,9 @@ Test Accuracy           |  Loss
 
 
 
-| Model                | Accuracy, % | Number of  parameters | Time (s/epoch) |
+| Model                | Accuracy, % | #  parameters | Time (s/epoch) |
 |----------------------|---------------|-----------------------|----------------|
-| ResNet(6)              | 86.7          | 577                   | 12.25          |
+| ResNet(6)              | 86.7          | 577 K                  | 12.25          |
 | ResNet(1)              | 84.19         | 207 K                 | 9.84           |
 | OdeNet (Runge-Kutta) |  84.85            |  207 K                     |         1860.31        |
 | OdeNet (Euler)       | 84.62         | 207 K                 | 159.02         |
@@ -108,13 +108,14 @@ PYTHONPATH='.' python ./experiments/texts/vdcnn.py --batch_size 256 --max_epo 20
 
 Run **VdCNN** with 1 block:
 ```
-PYTHONPATH='.' python ./experiments/texts/vdcnn.py --batch_size 256 --max_epo 20 --save vdcnn1  --num_blocks 1
+PYTHONPATH='.' python ./experiments/texts/vdcnn.py --batch_size 256 --max_epo 20 --save vdcnn1 \
+--num_blocks 1
 ```
 
 Run **OdeNet** with explicit Euler solver and tolerance 1e-2 (may take a lot of time):
 ```
-PYTHONPATH='.' python ./experiments/texts/vdcnn.py --batch_size 256 --max_epo 20 --save vdcnn_ode --use_ode
---solver euler  --tol 1e-2 
+PYTHONPATH='.' python ./experiments/texts/vdcnn.py --batch_size 256 --max_epo 20 --save vdcnn_ode \
+--use_ode --solver euler  --tol 1e-2 
 ```
 
 
@@ -125,7 +126,7 @@ Test Accuracy           |  Loss
 
 
 
-| Model                | Accuracy, % | Number of  parameters | Time (s/epoch) |
+| Model                | Accuracy, % | #  parameters | Time (s/epoch) |
 |----------------------|---------------|-----------------------|----------------|
 | VdCNN(6)              | 88.46         | 287 K              | 311       |
 | VdCNN(1)              | 87.75        | 162 K                 | 172           |
