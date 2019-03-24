@@ -8,13 +8,15 @@ model and Ag-News dataset.
 
 * PyTorch >= 1.0
 * NumPy
+* TensorFlow==1.13.1
 
 ## Spiral experiment
 
 Run ODE:
 
 ```
-PYTHONPATH=. python ./experiments/spiral-torch.py
+PYTHONPATH=. python ./experiments/spiral-torch.py # pytorch
+python -m experiments.spiral_tf # tensorflow
 ```
 ### Result
 
